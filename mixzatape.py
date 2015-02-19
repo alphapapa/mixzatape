@@ -12,6 +12,17 @@ from mixzatape_ui import StationSearchBox
 # * add volume display
 # * add replay last song feature
 
+class KeyHandler:
+        def __init__(self, action, handler, passthrough=False):
+                self.action = action
+                self.handler = handler
+
+                # Whether to pass the keypress through to a widget
+                # like the search widget, or catch it and handle it as
+                # a control key.  Default is False, meaning catch it
+                # and handle it as a control key.
+                self.passthrough = passthrough
+
 # MixZaTape
 # =========
 # A Songza player for your terminal, with a nifty (?) urwid interface.
@@ -19,20 +30,24 @@ class MixZaTape:
 	def __init__(self):
 		# key handlers are set here
 		# TODO: add alternate key mappings, VIM-style, possibly even user configurable?
-		self.key_handlers = {
-			# ESC key
-			"esc": ("Exit", self.exit),
-			"f9": ("Skip", self.skip),
-			"+": ("Volume Up", self.volume_up),
-			"-": ("Volume Down", self.volume_down),
-			# space bar
-			"f8": ("Pause", self.pause),
-			"f10": ("Seek", self.seek),
-			"f1": ("Help", self.show_help),
-			"f2": ("Station Search", self.show_search),
-			">": ("Upvote", self.upvote),
-			"<": ("Downvote", self.downvote),
-		}
+
+                # These are reused to change key mappings between dialogs
+                self.handlers = {
+                        "exit": KeyHandler("Exit", self.exit, passthrough=True),
+                        'show_help': KeyHandler("Help", self.show_help)}
+
+                self.key_handlers = {
+			"esc": self.handlers['exit'],
+                        "tab": KeyHandler("Next Track/Skip", self.skip),
+			"up": KeyHandler("Volume Up", self.volume_up),
+			"down": KeyHandler("Volume Down", self.volume_down),
+			" ": KeyHandler("Pause", self.pause, passthrough=True),  # Spacebar
+                        "left": KeyHandler("Seek", self.seek),
+			"right": KeyHandler("Seek", self.seek),
+			"?": self.handlers['show_help'],
+                        "/": KeyHandler("Station Search", self.show_search, passthrough=True),
+			"+": KeyHandler("Upvote", self.upvote),
+			"-": KeyHandler("Downvote", self.downvote)}
 
 		# UI text
 		self.ui_text = {
@@ -150,7 +165,7 @@ class MixZaTape:
 		# fire handler for the input key
 		handler = self.key_handlers.get(key)
 		if (handler is not None):
-			handler[1]()
+			handler.handler()
 
 	# update_player_ui(loop, user_data)
 	# =================================
@@ -253,6 +268,8 @@ class MixZaTape:
 			urwid.connect_signal(button, "click", self.on_station_selected, (k, menu_opts[k]))
 			body.append(urwid.AttrMap(button, None, focus_map="reversed"))
 
+                self.key_handlers['esc'] = self.handlers['show_help']
+
 		return urwid.BoxAdapter(urwid.ListBox(urwid.SimpleFocusListWalker(body)), 20)
 
 	# build_help_screen()
@@ -266,7 +283,7 @@ class MixZaTape:
 		keys.sort()
 		for k in keys:
 			handler = self.key_handlers[k]
-			body.append(urwid.Text("[{0}]: {1}".format(k, handler[0])))
+			body.append(urwid.Text("[{0}]: {1}".format(k, handler.action)))
 
 		return urwid.Pile(body)
 
@@ -291,12 +308,17 @@ class MixZaTape:
 	# custom keypress handler for the station list
 	def on_search_keypress(self, widget, size, key):
 		# submit query on enter
-		if (key == "enter"):
+		if key == "enter":
 			station_list = self.build_station_list(widget.get_edit_text())
 			self.show_screen(station_list)
-		# allow controls keys to execute
-		elif (key in self.key_handlers):
-			self.key_handlers[key][1]()
+
+                # Exit the search dialog
+                elif key == 'esc':
+                        self.show_help()
+
+                # Catch certain control keys instead of passing them through to the input widget
+		elif (key in self.key_handlers) and (self.key_handlers[key].passthrough == False):
+			self.key_handlers[key].handler()
 
 	# show_screen(screen)
 	# ===================
@@ -311,6 +333,7 @@ class MixZaTape:
 	# Display the help screen.
 	def show_help(self):
 		self.show_screen(self.ui["help_screen"])
+                self.key_handlers['esc'] = self.handlers['exit']
 
 	# show_search()
 	# =============
